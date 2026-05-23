@@ -1,0 +1,14 @@
+{
+  "name": "stream-receiver",
+  "version": "1.0.0",
+  "description": "WebSocket stream receiver and broadcaster for video frames",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "express": "4.21.2",
+    "ws": "^8.18.0"
+  }
+}

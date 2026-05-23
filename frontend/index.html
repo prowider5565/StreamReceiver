@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stream Viewer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+      min-height: 100vh;
+      padding: 1rem;
+    }
+
+    h1 {
+      text-align: center;
+      margin-bottom: 1rem;
+      font-weight: 300;
+      font-size: 1.5rem;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    .camera-card {
+      background: #16213e;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid #0f3460;
+    }
+
+    .camera-card header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      background: #0f3460;
+    }
+
+    .camera-card header h2 {
+      font-size: 0.9rem;
+      font-weight: 500;
+    }
+
+    .status {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #e94560;
+    }
+
+    .status.connected {
+      background: #06d6a0;
+      color: #000;
+    }
+
+    .video-container {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .video-container video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .video-container .placeholder {
+      position: absolute;
+      color: #555;
+      font-size: 0.85rem;
+    }
+
+    @media (max-width: 700px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Stream Receiver — Live View (H.264)</h1>
+  <div class="grid" id="grid"></div>
+
+  <script>
+    const CAMERAS = ['cam1', 'cam2', 'cam3', 'cam4'];
+    // Use current host if served via nginx, otherwise fallback to backend directly
+    const WS_BASE = location.host ? `ws://${location.host}` : 'ws://localhost:2343';
+    const MIME_CODEC = 'video/mp4; codecs="avc1.42E01E"'; // H.264 Baseline
+
+    const grid = document.getElementById('grid');
+
+    CAMERAS.forEach((camId) => {
+      // Build card
+      const card = document.createElement('div');
+      card.className = 'camera-card';
+
+      const header = document.createElement('header');
+      const title = document.createElement('h2');
+      title.textContent = camId.toUpperCase();
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = 'disconnected';
+      header.appendChild(title);
+      header.appendChild(status);
+
+      const container = document.createElement('div');
+      container.className = 'video-container';
+      const video = document.createElement('video');
+      video.autoplay = true;
+      video.muted = true;
+      video.playsInline = true;
+      const placeholder = document.createElement('span');
+      placeholder.className = 'placeholder';
+      placeholder.textContent = 'Waiting for stream…';
+      container.appendChild(video);
+      container.appendChild(placeholder);
+
+      card.appendChild(header);
+      card.appendChild(container);
+      grid.appendChild(card);
+
+      function connect() {
+        let mediaSource = null;
+        let sourceBuffer = null;
+        let queue = [];
+        let isFirstMessage = true;
+
+        const ws = new WebSocket(`${WS_BASE}/broadcast/${camId}`);
+        ws.binaryType = 'arraybuffer';
+
+        ws.addEventListener('open', () => {
+          status.textContent = 'live';
+          status.classList.add('connected');
+          placeholder.style.display = 'none';
+        });
+
+        ws.addEventListener('message', (event) => {
+          const data = new Uint8Array(event.data);
+
+          if (isFirstMessage) {
+            // First message is the init segment — set up MSE
+            isFirstMessage = false;
+            setupMediaSource(data);
+            return;
+          }
+
+          // Subsequent messages are media segments
+          appendBuffer(data);
+        });
+
+        ws.addEventListener('close', () => {
+          status.textContent = 'disconnected';
+          status.classList.remove('connected');
+          placeholder.style.display = '';
+          cleanup();
+          setTimeout(connect, 2000);
+        });
+
+        ws.addEventListener('error', () => {
+          ws.close();
+        });
+
+        function setupMediaSource(initSegment) {
+          if (!MediaSource.isTypeSupported(MIME_CODEC)) {
+            console.error(`[${camId}] MIME codec not supported: ${MIME_CODEC}`);
+            return;
+          }
+
+          mediaSource = new MediaSource();
+          video.src = URL.createObjectURL(mediaSource);
+
+          mediaSource.addEventListener('sourceopen', () => {
+            try {
+              sourceBuffer = mediaSource.addSourceBuffer(MIME_CODEC);
+              sourceBuffer.mode = 'segments';
+
+              sourceBuffer.addEventListener('updateend', () => {
+                // Flush queued segments
+                if (queue.length > 0 && !sourceBuffer.updating) {
+                  sourceBuffer.appendBuffer(queue.shift());
+                }
+
+                // Keep buffer trimmed to avoid memory bloat (keep last 10s)
+                if (video.currentTime > 10) {
+                  try {
+                    sourceBuffer.remove(0, video.currentTime - 10);
+                  } catch (e) {
+                    // Ignore if remove fails during another update
+                  }
+                }
+              });
+
+              // Append the init segment
+              sourceBuffer.appendBuffer(initSegment);
+            } catch (err) {
+              console.error(`[${camId}] Error setting up SourceBuffer:`, err);
+            }
+          });
+        }
+
+        function appendBuffer(data) {
+          if (!sourceBuffer) {
+            queue.push(data);
+            return;
+          }
+
+          if (sourceBuffer.updating || queue.length > 0) {
+            queue.push(data);
+            // Drop old segments if queue gets too large (prevent memory buildup)
+            if (queue.length > 30) {
+              queue = queue.slice(-10);
+            }
+          } else {
+            try {
+              sourceBuffer.appendBuffer(data);
+            } catch (err) {
+              console.error(`[${camId}] appendBuffer error:`, err);
+              // QuotaExceededError — trim buffer and retry
+              if (err.name === 'QuotaExceededError' && !sourceBuffer.updating) {
+                try {
+                  sourceBuffer.remove(0, video.currentTime - 2);
+                } catch (e) { /* ignore */ }
+                queue.push(data);
+              }
+            }
+          }
+        }
+
+        function cleanup() {
+          queue = [];
+          if (mediaSource && mediaSource.readyState === 'open') {
+            try { mediaSource.endOfStream(); } catch (e) { /* ignore */ }
+          }
+          mediaSource = null;
+          sourceBuffer = null;
+        }
+      }
+
+      connect();
+    });
+  </script>
+</body>
+</html>
