@@ -14,6 +14,8 @@ CAMERA_IDS.forEach((id) => {
   cameras[id] = {
     // The fMP4 initialization segment (codec config) — needed for late joiners
     initSegment: null,
+    // The last keyframe-containing media segment — needed so late joiners can decode immediately
+    lastKeyframeSegment: null,
     // Connected viewer WebSocket clients
     viewers: new Set(),
   };
@@ -24,6 +26,27 @@ const ingestWss = new WebSocketServer({ noServer: true });
 
 // Broadcast WSS — viewers connect here to receive the stream
 const broadcastWss = new WebSocketServer({ noServer: true });
+
+/**
+ * Detect if an fMP4 segment contains a keyframe.
+ * With ffmpeg's frag_keyframe option, each fragment starts with a keyframe,
+ * so every moof+mdat segment is a keyframe segment.
+ * We verify by looking for the 'moof' box signature.
+ */
+function isKeyframeSegment(buffer) {
+  // Look for 'moof' box in the first 32 bytes (it's always at the start of a media segment)
+  for (let i = 0; i < Math.min(buffer.length - 3, 32); i++) {
+    if (
+      buffer[i] === 0x6d &&     // 'm'
+      buffer[i + 1] === 0x6f && // 'o'
+      buffer[i + 2] === 0x6f && // 'o'
+      buffer[i + 3] === 0x66    // 'f'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Protocol for ingest:
@@ -58,6 +81,16 @@ ingestWss.on('connection', (ws, req) => {
       return;
     }
 
+    // Check if this segment contains a keyframe (look for moof box with sync sample)
+    // In fMP4, segments starting with a keyframe typically have the
+    // trun box's first sample flags indicating a sync sample, or we can
+    // simply detect the moof box and check for IDR NAL units.
+    // A simpler heuristic: cache every segment that starts a new moof
+    // (ffmpeg with frag_keyframe produces one keyframe per fragment)
+    if (isKeyframeSegment(buffer)) {
+      cam.lastKeyframeSegment = buffer;
+    }
+
     // Subsequent messages are media segments — relay to all viewers
     for (const viewer of cam.viewers) {
       if (viewer.readyState === viewer.OPEN) {
@@ -68,8 +101,8 @@ ingestWss.on('connection', (ws, req) => {
 
   ws.on('close', () => {
     console.log(`[ingest] Camera disconnected: ${camId}`);
-    // Optionally clear init segment so stale data isn't served
     cam.initSegment = null;
+    cam.lastKeyframeSegment = null;
   });
 
   ws.on('error', (err) => {
@@ -90,9 +123,12 @@ broadcastWss.on('connection', (ws, req) => {
   console.log(`[broadcast] Viewer connected: ${camId}`);
   cam.viewers.add(ws);
 
-  // Send cached init segment so viewer can start decoding immediately
+  // Send cached init segment + last keyframe so viewer can decode immediately
   if (cam.initSegment) {
     ws.send(cam.initSegment);
+    if (cam.lastKeyframeSegment) {
+      ws.send(cam.lastKeyframeSegment);
+    }
   }
 
   ws.on('close', () => {
