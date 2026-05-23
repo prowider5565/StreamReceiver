@@ -1,0 +1,158 @@
+.app {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+h1 {
+  font-size: 1.4rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.server-config {
+  margin-bottom: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.server-config label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.server-config input {
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #333;
+  border-radius: 6px;
+  background: #1a1a1a;
+  color: #eee;
+  font-size: 0.9rem;
+}
+
+.cameras {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  margin-bottom: 1.5rem;
+}
+
+.camera-row {
+  background: #1a1a2e;
+  border: 1px solid #2a2a4e;
+  border-radius: 8px;
+  padding: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.camera-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.camera-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #555;
+}
+
+.status-dot.active {
+  background: #06d6a0;
+  box-shadow: 0 0 6px #06d6a0;
+}
+
+.camera-row input {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background: #111;
+  color: #eee;
+  font-size: 0.82rem;
+  font-family: monospace;
+}
+
+.camera-row input:disabled {
+  opacity: 0.5;
+}
+
+.camera-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+button {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-start {
+  background: #06d6a0;
+  color: #000;
+}
+
+.btn-start:hover {
+  background: #05b88a;
+}
+
+.btn-stop {
+  background: #e94560;
+  color: #fff;
+}
+
+.btn-stop:hover {
+  background: #d13a54;
+}
+
+.global-actions {
+  display: flex;
+  gap: 0.8rem;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+}
+
+.log {
+  border-top: 1px solid #2a2a4e;
+  padding-top: 1rem;
+}
+
+.log h3 {
+  font-size: 0.8rem;
+  color: #888;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.log-entries {
+  background: #0a0a0a;
+  border-radius: 6px;
+  padding: 0.6rem;
+  max-height: 150px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.log-entry {
+  color: #aaa;
+}
